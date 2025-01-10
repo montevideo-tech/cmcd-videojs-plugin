@@ -67,6 +67,7 @@ export class CmcdData {
         flv: VIDEO,
         // Muxed audio and video
         ts: MUXED,
+        m4s: MUXED,
         // Init segment not implemented
         // Caption
         webvtt: CAPTION,
@@ -83,6 +84,16 @@ export class CmcdData {
       };
 
       if (supportedExtensions.hasOwnProperty(extension)) {
+        if (extension === 'm4s') {
+          const media = this.vhs.playlists.media();
+          const hasAudioTrack = media.attributes.AUDIO;
+
+          if (hasAudioTrack) {
+            const isVideoSegment = media.segments.findIndex(seg => seg.resolvedUri === uriBeingRequested) !== -1;
+
+            return isVideoSegment ? VIDEO : AUDIO;
+          }
+        }
         return supportedExtensions[extension];
       }
       return undefined;
