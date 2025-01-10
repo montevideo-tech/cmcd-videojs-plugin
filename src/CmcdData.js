@@ -85,17 +85,30 @@ export class CmcdData {
 
       if (supportedExtensions.hasOwnProperty(extension)) {
         if (extension === 'm4s') {
+          const main = this.vhs.playlists.main;
           const media = this.vhs.playlists.media();
-          const hasAudioTrack = media.attributes.AUDIO;
+          const mediaAttrubutes = media.attributes || {};
+          const audioGroups = main && main.mediaGroups && main.mediaGroups.AUDIO || {};
+          const audioGroup = audioGroups[mediaAttrubutes.AUDIO] || {};
+
+          let hasAudioTrack = Boolean(audioGroup);
+
+          for (const groupId in audioGroup) {
+            if (!audioGroup[groupId].uri && !audioGroup[groupId].playlists) {
+              hasAudioTrack = false;
+              break;
+            }
+          }
 
           if (hasAudioTrack) {
-            const isVideoSegment = media.segments.findIndex(seg => seg.resolvedUri === uriBeingRequested) !== -1;
+            const isVideoSegment = media.segments.findIndex((seg) => seg.resolvedUri === uriBeingRequested) !== -1;
 
             return isVideoSegment ? VIDEO : AUDIO;
           }
         }
         return supportedExtensions[extension];
       }
+
       return undefined;
     } catch (error) {
       return undefined;
