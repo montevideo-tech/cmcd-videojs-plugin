@@ -1,6 +1,7 @@
 import { CmcdObjectType } from '@svta/common-media-library/cmcd/CmcdObjectType';
 import { CmcdStreamType } from '@svta/common-media-library/cmcd/CmcdStreamType';
 import { CmcdStreamingFormat } from '@svta/common-media-library/cmcd/CmcdStreamingFormat';
+import { CmcdFormatters } from '@svta/common-media-library/cmcd';
 
 export class CmcdData {
   constructor(player, sid, cid) {
@@ -12,10 +13,9 @@ export class CmcdData {
 
   getEncodedBitrate() {
     try {
-
       const bandwidth = this.player.tech(true).vhs.playlists.media_.attributes.BANDWIDTH;
 
-      const encodedBitrate = Math.round(bandwidth / 1000);
+      const encodedBitrate = CmcdFormatters.br(bandwidth / 1000);
 
       return encodedBitrate;
     } catch (e) {
@@ -25,7 +25,6 @@ export class CmcdData {
 
   getObjectDuration(uriBeingRequested) {
     try {
-
       const playlist = this.player.tech(true).vhs.playlists.media();
 
       const currentSegmentIndex = playlist.segments.findIndex(segment => segment.resolvedUri === uriBeingRequested);
@@ -33,16 +32,13 @@ export class CmcdData {
       const currentSegmentDuration = Math.round(playlist.segments[currentSegmentIndex].duration * 1000);
 
       return currentSegmentDuration;
-
     } catch (error) {
       return undefined;
     }
-
   }
 
   getObjectType(uriBeingRequested) {
     try {
-
       const extension = uriBeingRequested.split('.').pop();
 
       const { MANIFEST, AUDIO, VIDEO, MUXED, CAPTION, OTHER } = CmcdObjectType;
@@ -71,6 +67,7 @@ export class CmcdData {
         flv: VIDEO,
         // Muxed audio and video
         ts: MUXED,
+        m4s: MUXED,
         // Init segment not implemented
         // Caption
         webvtt: CAPTION,
@@ -87,10 +84,32 @@ export class CmcdData {
       };
 
       if (supportedExtensions.hasOwnProperty(extension)) {
+        if (extension === 'm4s') {
+          const main = this.vhs.playlists.main;
+          const media = this.vhs.playlists.media();
+          const mediaAttrubutes = media.attributes || {};
+          const audioGroups = main && main.mediaGroups && main.mediaGroups.AUDIO || {};
+          const audioGroup = audioGroups[mediaAttrubutes.AUDIO] || {};
+
+          let hasAudioTrack = Boolean(audioGroup);
+
+          for (const groupId in audioGroup) {
+            if (!audioGroup[groupId].uri && !audioGroup[groupId].playlists) {
+              hasAudioTrack = false;
+              break;
+            }
+          }
+
+          if (hasAudioTrack) {
+            const isVideoSegment = media.segments.findIndex((seg) => seg.resolvedUri === uriBeingRequested) !== -1;
+
+            return isVideoSegment ? VIDEO : AUDIO;
+          }
+        }
         return supportedExtensions[extension];
       }
-      return undefined;
 
+      return undefined;
     } catch (error) {
       return undefined;
     }
@@ -98,19 +117,16 @@ export class CmcdData {
 
   getTopBitrate() {
     try {
-
       const qualitylevels = this.player.qualityLevels().levels_;
 
       const highestBitrate = qualitylevels.reduce(function(prev, current) {
         return (prev && prev.bitrate > current.bitrate) ? prev : current;
       });
 
-      const topBitrate = Math.round(highestBitrate.bitrate / 1000);
+      const topBitrate = CmcdFormatters.tb(highestBitrate.bitrate / 1000);
 
       return topBitrate;
-
     } catch (error) {
-
       return undefined;
     }
   }
@@ -142,7 +158,7 @@ export class CmcdData {
     try {
       const bufferLengthMs = this.bufferLengthMs();
 
-      return bufferLengthMs;
+      return CmcdFormatters.bl(bufferLengthMs);
     } catch (e) {
       return undefined;
     }
@@ -151,8 +167,8 @@ export class CmcdData {
   getDeadline() {
     try {
       const bufferLength = this.bufferLengthMs();
-      const playbackRate = this.player.playbackRate() * 1000;
-      const deadline = Math.round(bufferLength / playbackRate);
+      const playbackRate = this.player.playbackRate();
+      const deadline = CmcdFormatters.dl(bufferLength / playbackRate);
 
       return deadline;
     } catch (e) {
@@ -162,7 +178,7 @@ export class CmcdData {
 
   getMeasuredThroughput() {
     try {
-      const bandwidth = Math.round(this.vhs.systemBandwidth / 1000);
+      const bandwidth = CmcdFormatters.mtp(this.vhs.systemBandwidth / 1000);
 
       return bandwidth;
     } catch (e) {
@@ -297,8 +313,17 @@ export class CmcdData {
     }
     res.dl = this.getDeadline();
     res.mtp = this.getMeasuredThroughput();
-    res.nor = this.getNextObjectRequest(uri);
-    res.nrr = this.getNextRangeRequest();
+    const nor = this.getNextObjectRequest(uri);
+
+    if (nor) {
+      res.nor = nor;
+    }
+
+    const nrr = this.getNextRangeRequest();
+
+    if (nrr) {
+      res.nrr = this.getNextRangeRequest();
+    }
     if (isWaitingEvent !== false) {
       res.su = isWaitingEvent;
     }
